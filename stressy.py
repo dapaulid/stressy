@@ -24,6 +24,7 @@ import glob
 import shutil
 import enum
 import datetime
+import time
 from timeit import default_timer as timer
 
 
@@ -47,8 +48,9 @@ class TestResult:
 # end class
 
 class OutputMode(enum.StrEnum):
+    ALL          = 'all'
     FAIL         = 'fail'
-    STDIO        = 'stdio'
+
     FILE         = 'file'
     NONE         = 'none'
 # end enum
@@ -78,11 +80,16 @@ def main():
         help="number of processes to run the command in parallel")
     parser.add_argument('-t', '--timeout', type=float, default=None, 
         help="timeout in seconds for command to complete")
-    parser.add_argument('-o', '--output', choices=list(OutputMode), default=OutputMode.FAIL,
+    parser.add_argument('-s', '--sleep', type=float, default=None,
+        help="duration in seconds to wait before next run")
+    parser.add_argument('-o', '--output', choices=list(OutputMode), default=OutputMode.ALL,
         help="destination for command output (stdout/stderr)")
     parser.add_argument('-c', '--continue', action='store_true', dest='cont',
         help="continue after first failure")
     args = parser.parse_args()
+
+    # convert command from list to string
+    args.command = subprocess.list2cmdline(args.command)
 
     # do it
     result = stress_test(args)
@@ -90,18 +97,18 @@ def main():
     # format test summary
     if result.status == TestStatus.PASSED:
         if result.failed_runs == 0:
-            summary = "stress test successfully completed all %d runs" % result.passed_runs
+            summary = "successfully completed all %d runs" % result.passed_runs
         else:
-            summary = "stress test completed with %d failed and %d successful runs" % (result.failed_runs, result.passed_runs)
+            summary = "completed with %d failed and %d successful runs" % (result.failed_runs, result.passed_runs)
         # end if
     elif result.status == TestStatus.FAILED:
         if result.failed_runs == 1:
-            summary = "stress test FAILED after %d successful runs" % result.passed_runs
+            summary = "FAILED after %d successful runs" % result.passed_runs
         else:
-            summary = "stress test FAILED with %d failed and %d successful runs" % (result.failed_runs, result.passed_runs)
+            summary = "FAILED with %d failed and %d successful runs" % (result.failed_runs, result.passed_runs)
         # end if
     elif result.status == TestStatus.CANCELLED:
-        summary = "stress test cancelled by user after %d failed and %d successful runs" % (result.failed_runs, result.passed_runs)
+        summary = "cancelled by user after %d failed and %d successful runs" % (result.failed_runs, result.passed_runs)
     else:
         raise Failed("unknown test result: %s" % result.status)
     # end if
@@ -137,7 +144,7 @@ def run(args):
     # init output redirection for subprocesses
     if args.output == OutputMode.FAIL:
         stdout = [ subprocess.PIPE for i in range(args.processes) ]
-    elif args.output == OutputMode.STDIO:
+    elif args.output == OutputMode.ALL:
         stdout = [ None for i in range(args.processes) ]
     elif args.output == OutputMode.FILE:
         stdout = [ open(LogName.TEMP % i, 'w') for i in range(args.processes) ]
@@ -161,7 +168,8 @@ def run(args):
     try:
         # output command info
         for i in range(args.processes):
-            print_proc(i, subprocess.list2cmdline(args.command), verbose=True)
+            print_proc(i, args.command, verbose=True)
+
 
         # start new processes for command
         procs = [ 
@@ -189,11 +197,12 @@ def run(args):
                 proc_msg = "killed due to timeout of %0.3f seconds" % args.timeout              
             # end try
 
-            # output process termination info
-            print_proc(i, proc_msg, verbose=proc_success)
             # output process output on failure
             if args.output == OutputMode.FAIL and not proc_success:
+                print_complete()
                 print(proc.stdout.read())
+            # output process termination info
+            print_proc(i, proc_msg, verbose=proc_success)
 
             if args.output == OutputMode.FILE:
                 # handle log file
@@ -250,13 +259,12 @@ def stress_test(args):
         if args.runs is not None:
             info += " of %d" % args.runs
         info += ", %d failures since %s" % (result.failed_runs, format_duration(result.duration))
-        info = colorize(info, Colors.WHITE)
-        if args.output == OutputMode.STDIO:
+        if args.output == OutputMode.ALL:
             print(HLINE)
-            print(info)
+            print("| " + colorize(info.ljust(len(HLINE)-4), Colors.WHITE) + " |")
             print(HLINE)
         else:
-            print_over("[ %s ]" % info)
+            print_over("[ %s ]" % colorize(info, Colors.WHITE))
         # end if    
             
         # run command
@@ -270,6 +278,14 @@ def stress_test(args):
                 # stop unless the 'continue' flag is specified
                 if not args.cont:
                     break
+            # end if
+           
+            # handle sleep if specified
+            if args.sleep:
+                time.sleep(args.sleep)
+            # end if
+
+
         except KeyboardInterrupt:
             result.status = TestStatus.CANCELLED
             break
