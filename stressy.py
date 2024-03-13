@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.11
+#!/usr/bin/env python3
 #-------------------------------------------------------------------------------
 #
 #	Measures execution time of Python functions using decorators.
@@ -15,48 +15,52 @@
 # imports 
 #-------------------------------------------------------------------------------
 #
-import subprocess
 import argparse
-import os
-import sys
-import signal
 import glob
+import os
 import shutil
-import enum
-import datetime
+import signal
+import subprocess
+import sys
 import time
-from timeit import default_timer as timer
+
+from datetime import datetime
+from time import perf_counter as timer
 
 
 #-------------------------------------------------------------------------------
 # types
 #-------------------------------------------------------------------------------
 #
-# enum used to specify test result. also used as exit code
-class TestStatus(enum.IntEnum):
-    PASSED       = 0
-    FAILED       = 1
-    CANCELLED    = 2
-    ERROR        = 3
-# end class
-
 class TestResult:
-    status       = None
-    passed_runs  = 0
-    failed_runs  = 0
-    duration     = None
+    status       = None       # the TestStatus code
+    passed_runs  = 0          # the number of successfully completed runs
+    failed_runs  = 0          # the number of failed runs
+    duration     = None       # the total test duration
 # end class
 
-class OutputMode(enum.StrEnum):
-    ALL          = 'all'
-    FAIL         = 'fail'
+#-------------------------------------------------------------------------------
+# constants
+#-------------------------------------------------------------------------------
+#
+# enum used to specify test result. also used as exit code
+class TestStatus:
+    PASSED       = 0          # the command executed successfully
+    FAILED       = 1          # the command failed (non-zero exit code)
+    CANCELLED    = 2          # the command was cancelled by user
+    ERROR        = 3          # an error occurred during script execution
+# end class
 
-    FILE         = 'file'
-    NONE         = 'none'
+# supported output modes
+class OutputMode:
+    ALL          = 'all'      # print all subprocess output
+    FAIL         = 'fail'     # print subprocess output on failure only
+    FILE         = 'file'     # redirect subprocess output to log files
+    NONE         = 'none'     # do not print any subprocess output
 # end enum
 
 # log file name formats
-class LogName(enum.StrEnum):
+class LogName:
     TEMP         = ".stress_p%d.log"
     PASSED       = "stress_p%d_good.log"
     FAILED       = "stress_p%d_bad.log"
@@ -82,7 +86,7 @@ def main():
         help="timeout in seconds for command to complete")
     parser.add_argument('-s', '--sleep', type=float, default=None,
         help="duration in seconds to wait before next run")
-    parser.add_argument('-o', '--output', choices=list(OutputMode), default=OutputMode.ALL,
+    parser.add_argument('-o', '--output', choices=attrs(OutputMode), default=OutputMode.ALL,
         help="destination for command output (stdout/stderr)")
     parser.add_argument('-c', '--continue', action='store_true', dest='cont',
         help="continue after first failure")
@@ -188,7 +192,7 @@ def run(args):
                 returncode = proc.wait(remaining_timeout)
                 # process completed
                 proc_success = returncode == 0              
-                proc_msg = "exited with code %d" % returncode
+                proc_msg = "exited with code %d on %s" % (returncode, datetime.now())
 
             except subprocess.TimeoutExpired:
                 # process exceeded time limit
@@ -200,7 +204,7 @@ def run(args):
             # output process output on failure
             if args.output == OutputMode.FAIL and not proc_success:
                 print_complete()
-                print(proc.stdout.read())
+                print(proc.stdout.read().rstrip())
             # output process termination info
             print_proc(i, proc_msg, verbose=proc_success)
 
@@ -328,7 +332,7 @@ class Failed(Exception):
 #-------------------------------------------------------------------------------
 #   
 # Ansi colors
-class Colors(enum.StrEnum):
+class Colors:
     RED          = '\x1b[1;31m'
     GREEN        = '\x1b[1;32m'
     YELLOW       = "\x1b[1;33m"
@@ -369,10 +373,23 @@ def remove_files(pattern):
 #-------------------------------------------------------------------------------
 #
 def format_duration(seconds):
-	if seconds < 60:
-		return "%.3f seconds" % seconds
-	else:
-		return str(datetime.timedelta(seconds=seconds)) # x days, H:MM:SS
+    if seconds < 60:
+        return "%0.3fs" % seconds
+    units = [
+        ("a",   365 * 86400), # years
+        ("mt",  30 * 86400),  # months
+        ("w",   7 * 86400),   # weeks
+        ("d",   86400),       # day
+        ("h",   3600),        # hours
+        ("min", 60),          # minutes
+        ("s",   1)            # seconds
+    ]
+    parts = []
+    for unit, duration in units:
+        num_units, seconds = divmod(seconds, duration)
+        if num_units > 0:
+            parts.append("%d%s" % (num_units, unit))
+    return " ".join(parts[:2])
 # end function
 
 #-------------------------------------------------------------------------------
@@ -402,6 +419,11 @@ def print_complete(clear=False):
         else:
             print()
     print_over_length = 0
+
+#-------------------------------------------------------------------------------
+#
+def attrs(obj):
+	return [getattr(obj, x) for x in dir(obj) if not x.startswith('__')]
 
 #-------------------------------------------------------------------------------
 # entry point
