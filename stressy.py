@@ -163,7 +163,7 @@ def run(args):
         msg = "[process %d] %s" % (i, msg)
         if args.output == OutputMode.FILE:
             print(msg, flush=True, file=stdout[i])
-        elif not verbose:
+        elif args.output != OutputMode.NONE and not verbose:
             print_complete()            
             print(msg)
         # end if
@@ -297,9 +297,6 @@ def stress_test(args):
 
     # end while
 
-    # finish possible print_over
-    #print_complete()
-
     # determine total elapsed time
     result.duration = timer() - start_time  
 
@@ -310,6 +307,13 @@ def stress_test(args):
         else:
             result.status = TestStatus.FAILED
         # end if
+    # end if
+
+    # finish possible print_over
+    if args.output == OutputMode.ALL or (args.output == OutputMode.FAIL and result.status == TestStatus.FAILED):
+        print()
+    else:
+        print_complete(clear=True)
     # end if
 
     # done
