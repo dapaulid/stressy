@@ -284,11 +284,7 @@ def stress_test(args):
                     break
             # end if
            
-            # handle sleep if specified
-            if args.sleep:
-                time.sleep(args.sleep)
-            # end if
-
+            handle_sleep(args.sleep)
 
         except KeyboardInterrupt:
             result.status = TestStatus.CANCELLED
@@ -320,6 +316,19 @@ def stress_test(args):
     return result
 # end function
 
+#-------------------------------------------------------------------------------
+#
+def handle_sleep(seconds):
+    if not seconds:
+        return
+    while seconds > 0:
+        info = "sleeping for %s" % format_duration(seconds)
+        print_over("[ %s ]" % colorize(info, Colors.WHITE))
+        time.sleep(1)
+        seconds = max(seconds - 1, 0)
+    # end if
+    print_over("")
+# end function
 
 #-------------------------------------------------------------------------------
 # helpers
