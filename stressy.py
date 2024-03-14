@@ -78,7 +78,7 @@ def main():
     parser = argparse.ArgumentParser(description='repeatedly run a command until failure')
     parser.add_argument('command', type=str, nargs='+', 
         help="the shell command to be executed")
-    parser.add_argument('-r', '--runs', type=int, default=None, 
+    parser.add_argument('-n', '--runs', type=int, default=None, 
         help="number of repetitions. Repeat until failure if not specified")
     parser.add_argument('-p', '--processes', type=int, default=1, 
         help="number of processes to run the command in parallel")
