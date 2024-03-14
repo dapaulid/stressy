@@ -16,6 +16,8 @@
 #-------------------------------------------------------------------------------
 #
 import argparse
+import collections
+import enum
 import glob
 import os
 import shutil
@@ -36,6 +38,7 @@ class TestResult:
     status       = None       # the TestStatus code
     passed_runs  = 0          # the number of successfully completed runs
     failed_runs  = 0          # the number of failed runs
+    started_on   = None       # the datetime of test start 
     duration     = None       # the total test duration
 # end class
 
@@ -44,12 +47,32 @@ class TestResult:
 #-------------------------------------------------------------------------------
 #
 # enum used to specify test result. also used as exit code
-class TestStatus:
+class TestStatus(enum.IntEnum):
     PASSED       = 0          # the command executed successfully
     FAILED       = 1          # the command failed (non-zero exit code)
     CANCELLED    = 2          # the command was cancelled by user
     ERROR        = 3          # an error occurred during script execution
 # end class
+
+# Ansi colors
+class Colors:
+    RED          = '\x1b[1;31m'
+    GREEN        = '\x1b[1;32m'
+    YELLOW       = "\x1b[1;33m"
+    BLUE         = "\x1b[1;34m"
+    PURPLE       = "\x1b[1;35m"
+    CYAN         = "\x1b[1;36m"
+    WHITE        = "\x1b[1;37m"
+    RESET        = '\x1b[0m'
+# end enum
+
+# colors associated with the TestStatus
+StatusColors = [
+    Colors.GREEN,
+    Colors.RED,
+    Colors.YELLOW,
+    Colors.RED
+]
 
 # supported output modes
 class OutputMode:
@@ -68,6 +91,19 @@ class LogName:
     CLEAN_TEMP   = ".stress_*.log"  
 # end enum
 
+# OS specific paths
+if os.name == 'nt':
+    # Windows
+    DIR_APPDATA = os.getenv('APPDATA')
+else:
+    # Linux
+    DIR_APPDATA = os.path.expanduser('~/.local/share')
+# end if
+
+# path to file for storing test results
+RESULTS_FILE = os.path.join(DIR_APPDATA, "stressy.tsv")
+
+
 #-------------------------------------------------------------------------------
 # main
 #-------------------------------------------------------------------------------
@@ -76,7 +112,7 @@ def main():
 
     # parse command line
     parser = argparse.ArgumentParser(description='repeatedly run a command until failure')
-    parser.add_argument('command', type=str, nargs='+', 
+    parser.add_argument('command', type=str, nargs='*', 
         help="the shell command to be executed")
     parser.add_argument('-n', '--runs', type=int, default=None, 
         help="number of repetitions. Repeat until failure if not specified")
@@ -90,10 +126,29 @@ def main():
         help="destination for command output (stdout/stderr)")
     parser.add_argument('-c', '--continue', action='store_true', dest='cont',
         help="continue after first failure")
+    parser.add_argument('-r', '--results', action='store_true',
+        help="print previous results for the given command")
+    parser.add_argument('--clear-results', action='store_true',
+        help="clear previous results for the given command")        
     args = parser.parse_args()
 
     # convert command from list to string
     args.command = subprocess.list2cmdline(args.command)
+
+    # handle result related options
+    if args.results:
+        print_results(args)
+        return TestStatus.PASSED
+    elif args.clear_results:
+        clear_results(args)
+        return TestStatus.PASSED
+    # end if
+
+    # exit with help if no command specified
+    if not args.command:
+        parser.print_help()
+        return TestStatus.ERROR
+    # end if
 
     # do it
     result = stress_test(args)
@@ -123,17 +178,10 @@ def main():
     # append execution time
     summary += ", took %s" % format_duration(result.duration)
     
-    # use colors
-    if result.status == TestStatus.PASSED:
-        summary = colorize(summary, Colors.GREEN)
-    elif result.status == TestStatus.FAILED:
-        summary = colorize(summary, Colors.RED)
-    elif result.status == TestStatus.CANCELLED:
-        summary = colorize(summary, Colors.YELLOW)
-    # end if
-
     # print it
-    print(summary)
+    print(colorize(summary, StatusColors[result.status]))
+
+    append_result(args, result)
 
     return result.status
 # end function
@@ -253,6 +301,7 @@ def stress_test(args):
 
     runs = 0
     result = TestResult()
+    result.started_on =  datetime.now()
     while args.runs is None or runs < args.runs:
 
         runs += 1
@@ -331,6 +380,105 @@ def handle_sleep(seconds):
 # end function
 
 #-------------------------------------------------------------------------------
+#
+def append_result(args, result):
+    # format result
+    entry = [
+        args.command,
+        result.started_on.isoformat(), 
+        format_duration(result.duration),
+        str(args.processes),
+        str(result.passed_runs), 
+        str(result.failed_runs), 
+        result.status.name
+    ]
+    # write to file
+    with open(RESULTS_FILE, 'a') as out:
+        out.write('\t'.join(entry) + '\n')
+
+# end function
+
+#-------------------------------------------------------------------------------
+#
+def print_results(args):
+    # read results from file
+    try:
+        groups = collections.defaultdict(list)
+        with open(RESULTS_FILE, 'r') as inp:
+            for line in inp:
+                if line.startswith(args.command):
+                    row = line.strip().split('\t')
+                    groups[row[0]].append(row[1:])
+                # end if
+            # end for
+        # end with
+    except FileNotFoundError:
+        pass
+    # end try
+    if len(groups) == 0:
+        print("no results available for this command")
+        return
+    # end if
+
+    # format results as table
+    ROW = "{0:<25} {1:>12} {2:>6} {3:>6} {4:>6}   {5:<8}"
+    print(HLINE)
+    print(colorize(ROW.format("started on", "duration", "proc", "pass", "fail", "result"), Colors.WHITE))
+    print(HLINE)
+    for cmd, entries in groups.items():
+        print(colorize(cmd, Colors.BLUE))
+        for entry in entries:
+            # format datetime
+            entry[0] = format_datetime(datetime.fromisoformat(entry[0]))
+            # format pass/fail
+            entry[3] = format_count(int(entry[3]))
+            entry[4] = format_count(int(entry[4]))
+            # format test result
+            entry[5] = colorize(entry[5], StatusColors[TestStatus[entry[5]]])
+            # print it
+            print(ROW.format(*entry))
+        print()
+    # end for
+
+# end function
+
+#-------------------------------------------------------------------------------
+#
+def clear_results(args):
+    # determine results to keep
+    total_count = 0
+    remaining = []
+    try:    
+        with open(RESULTS_FILE, 'r') as inp:
+            for line in inp:
+                total_count += 1
+                if not line.startswith(args.command):
+                    remaining.append(line)
+                # end if
+            # end for
+        # end with
+    except FileNotFoundError:
+        pass
+    # end try
+    remove_count = total_count - len(remaining)        
+    if remove_count == 0:
+        print("no results to remove for this command")
+        return
+    # end if
+
+    # write remaining results to file
+    with open(RESULTS_FILE, 'w') as out:
+        for line in remaining:
+            out.write(line)
+        # end for
+    # end with
+
+    # done
+    print("removed %d of %d results" % (remove_count, total_count))
+
+# end function
+
+#-------------------------------------------------------------------------------
 # helpers
 #-------------------------------------------------------------------------------
 #
@@ -344,15 +492,6 @@ class Failed(Exception):
 
 #-------------------------------------------------------------------------------
 #   
-# Ansi colors
-class Colors:
-    RED          = '\x1b[1;31m'
-    GREEN        = '\x1b[1;32m'
-    YELLOW       = "\x1b[1;33m"
-    WHITE        = "\x1b[1;37m"
-    RESET        = '\x1b[0m'
-# end enum
-
 # horizontal line
 HLINE = '-' * 80
 
@@ -404,6 +543,27 @@ def format_duration(seconds):
             parts.append("%d%s" % (num_units, unit))
     return " ".join(parts[:2])
 # end function
+
+#-------------------------------------------------------------------------------
+#
+def format_datetime(dt):
+    return dt.strftime("%a %d %b %Y, %H:%M:%S")
+# end function    
+
+#-------------------------------------------------------------------------------
+#
+def format_count(count):
+    units = [
+        ("T", 1000000000000), # trillions
+        ("B", 1000000000),    # billions
+        ("M", 1000000),       # million
+        ("K", 1000)           # thousands
+    ]
+    for unit, q in units:
+        if count >= q:
+            return "%d%s" % (count // q, unit)
+    return "%d " % count
+# end function    
 
 #-------------------------------------------------------------------------------
 #
