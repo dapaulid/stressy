@@ -99,11 +99,11 @@ def main():
         help="the shell command to be executed")
     # execution options
     exec_group = parser.add_argument_group("execution")
-    exec_group.add_argument('-n', '--runs', type=int,
+    exec_group.add_argument('-n', '--runs', type=utils.parse_count,
         help="number of repetitions, like 1000 or 10k")
     exec_group.add_argument('-d', '--duration', type=utils.parse_duration,
         help="repetition duration, like 30min or 12h")
-    exec_group.add_argument('-p', '--processes', type=int, default=1, 
+    exec_group.add_argument('-p', '--processes', type=utils.parse_count, default=1, 
         help="number of processes to run the command in parallel")
     exec_group.add_argument('-t', '--timeout', type=utils.parse_duration,
         help="maximum duration for command to complete")

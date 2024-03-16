@@ -96,7 +96,7 @@ def remove_files(pattern):
 
 #-------------------------------------------------------------------------------
 #
-DURATION_UNITS = [
+UNITS_DURATION = [
 	(1,                       ["s", "sec", "", "second", "seconds"]),
     (60,                      ["min", "minute", "minutes"]),
     (60 * 60,                 ["h", "hour", "hours"]),
@@ -105,16 +105,21 @@ DURATION_UNITS = [
     (60 * 60 * 24 * 30,       ["mt", "month", "months"]),
     (60 * 60 * 24 * 365,      ["a", "y", "year", "years"]),
 ]
-DURATION_PATTERN = r'(\d+(?:\.\d+)?)\s*([a-z]*)'
+UNITS_METRIC = [
+	(1,                       [""]),
+    (1000,                    ["k", "kilo", "thousand"]),
+    (1000000,                 ["m", "mega", "million"]),
+    (1000000000,              ["g", "giga", "b", "billion"]),
+    (1000000000000,           ["t", "tera", "trillions"]),
+]
+UNITS_PATTERN = r'(\d+(?:\.\d+)?)\s*([a-z]*)'
 
 #-------------------------------------------------------------------------------
 #
-def format_duration(seconds, num_parts=2):
-    if seconds < 60:
-        return "%0.3fs" % seconds
+def format_units(value, units, num_parts=-1):
     parts = []
-    for duration, aliases in DURATION_UNITS[::-1]:
-        num_units, seconds = divmod(seconds, duration)
+    for duration, aliases in units[::-1]:
+        num_units, value = divmod(value, duration)
         if num_units > 0:
             parts.append("%d%s" % (num_units, aliases[0]))
     return " ".join(parts[:num_parts])
@@ -122,48 +127,59 @@ def format_duration(seconds, num_parts=2):
 
 #-------------------------------------------------------------------------------
 #
-def parse_duration(s):
+def parse_units(s, units):
 	if s is None:
 		return None
-
-	matches = re.findall(DURATION_PATTERN, s.lower())
+	matches = re.findall(UNITS_PATTERN, s.lower())
 	if not matches:
-		raise ValueError("invalid duration: %s" % s)
-
-	seconds = 0
+		raise ValueError("invalid expression: %s" % s)
+	value = 0
 	for number, unit in matches:
 		matched_unit = None
-		for duration, aliases in DURATION_UNITS:
+		for duration, aliases in units:
 			if unit in aliases:
 				matched_unit = aliases[0]
 				break
 		if matched_unit is not None:
-			seconds += float(number) * duration
+			value += float(number) * duration
 		else:
 			raise ValueError("invalid unit: %s" % unit)
+        # end if
+	# end for
 
-	return seconds
+	return value
+# end function
+
+#-------------------------------------------------------------------------------
+#
+def format_duration(seconds, num_parts=2):
+    if seconds < 60:
+        return "%0.3fs" % seconds
+    return format_units(seconds, UNITS_DURATION, num_parts)
+# end function
+
+#-------------------------------------------------------------------------------
+#
+def parse_duration(s):
+    return parse_units(s, UNITS_DURATION)
+# end function
+
+#-------------------------------------------------------------------------------
+#
+def format_count(count):
+    return format_units(count, UNITS_METRIC, 1)
+# end function
+
+#-------------------------------------------------------------------------------
+#
+def parse_count(s):
+    return int(parse_units(s, UNITS_METRIC))
 # end function
 
 #-------------------------------------------------------------------------------
 #
 def format_datetime(dt):
     return dt.strftime("%a %d %b %Y, %H:%M:%S")
-# end function    
-
-#-------------------------------------------------------------------------------
-#
-def format_count(count):
-    units = [
-        ("T", 1000000000000), # trillions
-        ("B", 1000000000),    # billions
-        ("M", 1000000),       # million
-        ("K", 1000)           # thousands
-    ]
-    for unit, q in units:
-        if count >= q:
-            return "%d%s" % (count // q, unit)
-    return "%d " % count
 # end function    
 
 #-------------------------------------------------------------------------------
@@ -195,6 +211,4 @@ def print_complete(clear=False):
     print_over_length = 0
 
 #-------------------------------------------------------------------------------
-#
-def attrs(obj):
-	return [getattr(obj, x) for x in dir(obj) if not x.startswith('__')]
+# end of file
