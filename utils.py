@@ -34,6 +34,7 @@ class Failed(Exception):
 #-------------------------------------------------------------------------------
 #
 class Colors:
+    # standard
     RED          = '\x1b[1;31m'
     GREEN        = '\x1b[1;32m'
     YELLOW       = "\x1b[1;33m"
@@ -41,6 +42,17 @@ class Colors:
     PURPLE       = "\x1b[1;35m"
     CYAN         = "\x1b[1;36m"
     WHITE        = "\x1b[1;37m"
+    # modifiers
+    BOLD         = "\x1b[1m"
+    FAINT        = "\x1b[2m"
+    ITALIC       = "\x1b[3m"
+    UNDERLINE    = "\x1b[4m"
+    BLINK        = "\x1b[5m"
+    NEGATIVE     = "\x1b[7m"
+    CROSSED      = "\x1b[9m"
+    # combinations
+    LINK         = BLUE + UNDERLINE
+    # misc
     RESET        = '\x1b[0m'
 # end class
 
@@ -118,9 +130,9 @@ UNITS_PATTERN = r'(\d+(?:\.\d+)?)\s*([a-z]*)'
 #
 def format_units(value, units, num_parts=-1):
     parts = []
-    for duration, aliases in units[::-1]:
-        num_units, value = divmod(value, duration)
-        if num_units > 0:
+    for factor, aliases in units[::-1]:
+        num_units, value = divmod(value, factor)
+        if num_units > 0 or factor == 1:
             parts.append("%d%s" % (num_units, aliases[0]))
     return " ".join(parts[:num_parts])
 # end function
@@ -136,12 +148,12 @@ def parse_units(s, units):
 	value = 0
 	for number, unit in matches:
 		matched_unit = None
-		for duration, aliases in units:
+		for factor, aliases in units:
 			if unit in aliases:
 				matched_unit = aliases[0]
 				break
 		if matched_unit is not None:
-			value += float(number) * duration
+			value += float(number) * factor
 		else:
 			raise ValueError("invalid unit: %s" % unit)
         # end if

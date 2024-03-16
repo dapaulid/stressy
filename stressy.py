@@ -12,6 +12,15 @@
 #-------------------------------------------------------------------------------
 
 #-------------------------------------------------------------------------------
+# program info
+#-------------------------------------------------------------------------------
+#
+__DESCRIPTION__ = "a tool to repeatedly run a command until failure"
+__VERSION__     = "1.0.0"
+__WEBSITE__     = "https://github.com/dapaulid/stressy"
+
+
+#-------------------------------------------------------------------------------
 # imports 
 #-------------------------------------------------------------------------------
 #
@@ -86,6 +95,14 @@ class LogName:
 # path to file for storing test results
 RESULTS_FILE = os.path.join(utils.OsPaths.APPDATA, "stressy.tsv")
 
+# usage examples shown at end of help description
+USAGE_EXAMPLES = """
+  {0} echo hello              # repeat until failure or ctrl-c
+  {0} -n 1k -q echo hello     # repeat 1000 times, output failures only
+  {0} -d 12h -p 4 echo hello  # repeat for 12 hours with 4 processes in parallel
+  {0} -n 3 -c bad_command     # repeat after first failure  
+  {0} -r                      # output previous results and statistics
+"""
 
 #-------------------------------------------------------------------------------
 # main
@@ -94,9 +111,12 @@ RESULTS_FILE = os.path.join(utils.OsPaths.APPDATA, "stressy.tsv")
 def main():
 
     # parse command line
-    parser = argparse.ArgumentParser(description='repeatedly run a command until failure')
+    parser = argparse.ArgumentParser(
+        description="%(prog)s " + "v%s - %s\n  %s" % (__VERSION__, __DESCRIPTION__, utils.colorize(__WEBSITE__, Colors.LINK)),
+        epilog="examples:" + USAGE_EXAMPLES.format(sys.argv[0]),
+        formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('command', type=str, nargs='*', 
-        help="the shell command to be executed")
+        help="the shell command to execute")
     # execution options
     exec_group = parser.add_argument_group("execution")
     exec_group.add_argument('-n', '--runs', type=utils.parse_count,
