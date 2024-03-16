@@ -37,10 +37,12 @@ from utils import Failed, Colors
 #
 class TestResult:
     status       = None       # the TestStatus code
+    runs         = 0          # total number of completed runs so far
     passed_runs  = 0          # the number of successfully completed runs
     failed_runs  = 0          # the number of failed runs
     start_time   = None       # the timestamp of test start 
-    duration     = None       # the total test duration in seconds
+    duration     = None       # the total test duration in seconds so far
+    duration_eta = None       # estimated test duration until completion
     completed_on = None       # datetime of test completion
 # end class
 
@@ -292,14 +294,35 @@ def run(args):
 #
 def check_completed(args, result):
 
+    # update total number of runs
+    result.runs = result.passed_runs + result.failed_runs    
+
     # determine total elapsed time
     result.duration = utils.timer() - result.start_time
 
-    # check if specified number of runs reached. None means 'forever'
-    result.runs = result.passed_runs + result.failed_runs
+    # update estimate time until completion if possible
+    if args.runs is not None and result.runs > 0:
+        duration_eta_n = result.duration / result.runs * (args.runs - result.runs)
+    else:
+        duration_eta_n = None
+    # end if
+    if args.duration is not None:
+        duration_eta_d = args.duration - result.duration
+    else:
+        duration_eta_d = None
+    # end if
+    if duration_eta_n is None:
+        result.duration_eta = duration_eta_d
+    elif duration_eta_d is None:
+        result.duration_eta = duration_eta_n
+    else:
+        result.duration_eta = max(duration_eta_d, duration_eta_n)
+    # end if
+
+    # check if specified number of runs reached. None means 'forever', unless duration specified
     runs_reached = args.runs is not None and result.runs >= args.runs
 
-    # check if specified duration reached. None means 'forever'
+    # check if specified duration reached. None means 'forever', unless number of runs specified
     duration_reached = args.duration is not None and result.duration >= args.duration
 
     # we're done if a failure occurred and the 'continue' flag is not set
@@ -335,6 +358,8 @@ def stress_test(args):
             if args.runs is not None:
                 info += " of %d" % args.runs
             info += ", %d failures since %s" % (result.failed_runs, utils.format_duration(result.duration))
+            if result.duration_eta is not None:
+                info += ", ETA %s" % utils.format_duration(result.duration_eta)
             if args.output == OutputMode.ALL:
                 print(utils.HLINE)
                 print("| " + utils.colorize(info.ljust(len(utils.HLINE)-4), Colors.WHITE) + " |")
@@ -444,7 +469,7 @@ def print_results(args):
     print(utils.colorize(ROW.format("completed on", "duration", "per run", "proc", "pass", "fail", "result"), Colors.WHITE))
     print(utils.HLINE)
     for cmd, entries in groups.items():
-        print(utils.colorize(cmd, Colors.BLUE))
+        print(utils.colorize(cmd, Colors.CYAN))
         for entry in entries:
             avg = float(entry[1]) / (int(entry[3]) + int(entry[4]))
             fmt_entry = (
