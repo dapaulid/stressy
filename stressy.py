@@ -18,16 +18,17 @@
 import argparse
 import collections
 import enum
-import glob
 import os
 import shutil
-import signal
 import subprocess
 import sys
 import time
 
 from datetime import datetime
-from time import perf_counter as timer
+
+
+import utils
+from utils import Failed, Colors
 
 
 #-------------------------------------------------------------------------------
@@ -38,8 +39,9 @@ class TestResult:
     status       = None       # the TestStatus code
     passed_runs  = 0          # the number of successfully completed runs
     failed_runs  = 0          # the number of failed runs
-    started_on   = None       # the datetime of test start 
-    duration     = None       # the total test duration
+    start_time   = None       # the timestamp of test start 
+    duration     = None       # the total test duration in seconds
+    completed_on = None       # datetime of test completion
 # end class
 
 #-------------------------------------------------------------------------------
@@ -53,18 +55,6 @@ class TestStatus(enum.IntEnum):
     CANCELLED    = 2          # the command was cancelled by user
     ERROR        = 3          # an error occurred during script execution
 # end class
-
-# Ansi colors
-class Colors:
-    RED          = '\x1b[1;31m'
-    GREEN        = '\x1b[1;32m'
-    YELLOW       = "\x1b[1;33m"
-    BLUE         = "\x1b[1;34m"
-    PURPLE       = "\x1b[1;35m"
-    CYAN         = "\x1b[1;36m"
-    WHITE        = "\x1b[1;37m"
-    RESET        = '\x1b[0m'
-# end enum
 
 # colors associated with the TestStatus
 StatusColors = [
@@ -91,17 +81,8 @@ class LogName:
     CLEAN_TEMP   = ".stress_*.log"  
 # end enum
 
-# OS specific paths
-if os.name == 'nt':
-    # Windows
-    DIR_APPDATA = os.getenv('APPDATA')
-else:
-    # Linux
-    DIR_APPDATA = os.path.expanduser('~/.local/share')
-# end if
-
 # path to file for storing test results
-RESULTS_FILE = os.path.join(DIR_APPDATA, "stressy.tsv")
+RESULTS_FILE = os.path.join(utils.OsPaths.APPDATA, "stressy.tsv")
 
 
 #-------------------------------------------------------------------------------
@@ -114,28 +95,48 @@ def main():
     parser = argparse.ArgumentParser(description='repeatedly run a command until failure')
     parser.add_argument('command', type=str, nargs='*', 
         help="the shell command to be executed")
-    parser.add_argument('-n', '--runs', type=int, default=None, 
-        help="number of repetitions. Repeat until failure if not specified")
-    parser.add_argument('-p', '--processes', type=int, default=1, 
+    # execution options
+    exec_group = parser.add_argument_group("execution")
+    exec_group.add_argument('-n', '--runs', type=int,
+        help="number of repetitions, like 1000 or 10k")
+    exec_group.add_argument('-d', '--duration', type=utils.parse_duration,
+        help="repetition duration, like 30min or 12h")
+    exec_group.add_argument('-p', '--processes', type=int, default=1, 
         help="number of processes to run the command in parallel")
-    parser.add_argument('-t', '--timeout', type=float, default=None, 
-        help="timeout in seconds for command to complete")
-    parser.add_argument('-s', '--sleep', type=float, default=None,
+    exec_group.add_argument('-t', '--timeout', type=utils.parse_duration,
+        help="maximum duration for command to complete")
+    exec_group.add_argument('-s', '--sleep', type=utils.parse_duration,
         help="duration in seconds to wait before next run")
-    parser.add_argument('-o', '--output', choices=attrs(OutputMode), default=OutputMode.ALL,
-        help="destination for command output (stdout/stderr)")
-    parser.add_argument('-c', '--continue', action='store_true', dest='cont',
+    exec_group.add_argument('-c', '--continue', action='store_true', dest='cont',
         help="continue after first failure")
-    parser.add_argument('-r', '--results', action='store_true',
-        help="print previous results for the given command")
-    parser.add_argument('--clear-results', action='store_true',
-        help="clear previous results for the given command")        
+    # output options
+    output_group = parser.add_mutually_exclusive_group()
+    output_group.add_argument('-q', '--quiet', action='store_true',
+        help="print subprocess output only if command fails")
+    output_group.add_argument('-l', '--logfile', action='store_true',
+        help="write subprocess output to log files")
+    # result history 
+    hist_group = parser.add_argument_group("result history")
+    hist_group.add_argument('-r', '--results', action='store_true',
+        help="print result history for the given command")
+    hist_group.add_argument('--clear-results', action='store_true',
+        help="clear result history for the given command")        
+    # that's all   
     args = parser.parse_args()
 
     # convert command from list to string
     args.command = subprocess.list2cmdline(args.command)
 
-    # handle result related options
+    # determine output mode from given flags
+    if args.logfile:
+        args.output = OutputMode.FILE
+    elif args.quiet:
+        args.output = OutputMode.FAIL
+    else:
+        args.output = OutputMode.ALL
+    # end if
+
+    # handle result history options
     if args.results:
         print_results(args)
         return TestStatus.PASSED
@@ -176,10 +177,10 @@ def main():
     if args.processes > 1:
         summary += " on %d processes" % args.processes
     # append execution time
-    summary += ", took %s" % format_duration(result.duration)
+    summary += ", took %s" % utils.format_duration(result.duration)
     
     # print it
-    print(colorize(summary, StatusColors[result.status]))
+    print(utils.colorize(summary, StatusColors[result.status]))
 
     append_result(args, result)
 
@@ -212,7 +213,7 @@ def run(args):
         if args.output == OutputMode.FILE:
             print(msg, flush=True, file=stdout[i])
         elif args.output != OutputMode.NONE and not verbose:
-            print_complete()            
+            utils.print_complete()            
             print(msg)
         # end if
     # end function
@@ -235,7 +236,7 @@ def run(args):
         remaining_timeout = args.timeout
         for i, proc in enumerate(procs):
             
-            start_time = timer()        
+            start_time = utils.timer()        
             try:
                 returncode = proc.wait(remaining_timeout)
                 # process completed
@@ -244,14 +245,14 @@ def run(args):
 
             except subprocess.TimeoutExpired:
                 # process exceeded time limit
-                kill(proc)              
+                utils.kill(proc)              
                 proc_success = False
                 proc_msg = "killed due to timeout of %0.3f seconds" % args.timeout              
             # end try
 
             # output process output on failure
             if args.output == OutputMode.FAIL and not proc_success:
-                print_complete()
+                utils.print_complete()
                 print(proc.stdout.read().rstrip())
             # output process termination info
             print_proc(i, proc_msg, verbose=proc_success)
@@ -265,7 +266,7 @@ def run(args):
                 
             # determine remaining time
             if remaining_timeout is not None:
-                elapsed = timer() - start_time          
+                elapsed = utils.timer() - start_time          
                 remaining_timeout = max(remaining_timeout - elapsed, 0)
             # end if
 
@@ -281,10 +282,37 @@ def run(args):
             # make sure to close and remove any temporary log files
             for i in range(args.processes):
                 stdout[i].close()
-            remove_files(LogName.CLEAN_TEMP)                
+            utils.remove_files(LogName.CLEAN_TEMP)                
         # end if
     # end try
                 
+# end function
+
+#-------------------------------------------------------------------------------
+#
+def check_completed(args, result):
+
+    # determine total elapsed time
+    result.duration = utils.timer() - result.start_time
+
+    # check if specified number of runs reached. None means 'forever'
+    result.runs = result.passed_runs + result.failed_runs
+    runs_reached = args.runs is not None and result.runs >= args.runs
+
+    # check if specified duration reached. None means 'forever'
+    duration_reached = args.duration is not None and result.duration >= args.duration
+
+    # we're done if a failure occurred and the 'continue' flag is not set
+    if result.failed_runs > 0 and not args.cont:
+        return True
+
+    # we're done when all specified conditions are met
+    if args.runs is None:
+        return duration_reached
+    elif args.duration is None:
+        return runs_reached
+    else:
+        return runs_reached and duration_reached
 # end function
 
 #-------------------------------------------------------------------------------
@@ -293,57 +321,47 @@ def stress_test(args):
 
     if args.output == OutputMode.FILE:
         # remove old log files first
-        remove_files(LogName.CLEAN)
+        utils.remove_files(LogName.CLEAN)
     # end if
 
     # start measuring execution time
-    start_time = timer()
-
-    runs = 0
     result = TestResult()
-    result.started_on =  datetime.now()
-    while args.runs is None or runs < args.runs:
+    result.start_time =  utils.timer()
+    try:
+        while not check_completed(args, result):
 
-        runs += 1
-        result.duration = timer() - start_time          
-
-        # output info
-        info = "run #%d" % runs
-        if args.runs is not None:
-            info += " of %d" % args.runs
-        info += ", %d failures since %s" % (result.failed_runs, format_duration(result.duration))
-        if args.output == OutputMode.ALL:
-            print(HLINE)
-            print("| " + colorize(info.ljust(len(HLINE)-4), Colors.WHITE) + " |")
-            print(HLINE)
-        else:
-            print_over("[ %s ]" % colorize(info, Colors.WHITE))
-        # end if    
-            
-        # run command
-        try:
+            # output info
+            info = "run #%d" % result.runs
+            if args.runs is not None:
+                info += " of %d" % args.runs
+            info += ", %d failures since %s" % (result.failed_runs, utils.format_duration(result.duration))
+            if args.output == OutputMode.ALL:
+                print(utils.HLINE)
+                print("| " + utils.colorize(info.ljust(len(utils.HLINE)-4), Colors.WHITE) + " |")
+                print(utils.HLINE)
+            else:
+                utils.print_over("[ %s ]" % utils.colorize(info, Colors.WHITE))
+            # end if    
+                
+            # do it
             if run(args):
                 # success
                 result.passed_runs += 1             
             else: 
                 # failed
                 result.failed_runs += 1
-                # stop unless the 'continue' flag is specified
-                if not args.cont:
-                    break
             # end if
            
             handle_sleep(args.sleep)
-
-        except KeyboardInterrupt:
-            result.status = TestStatus.CANCELLED
-            break
-        # end try
-
-    # end while
+        # end while
+            
+    except KeyboardInterrupt:
+        result.status = TestStatus.CANCELLED
+    # end try
 
     # determine total elapsed time
-    result.duration = timer() - start_time  
+    result.duration = utils.timer() - result.start_time
+    result.completed_on = datetime.now()
 
     # determine result
     if result.status != TestStatus.CANCELLED:
@@ -358,7 +376,7 @@ def stress_test(args):
     if args.output == OutputMode.ALL or (args.output == OutputMode.FAIL and result.status == TestStatus.FAILED):
         print()
     else:
-        print_complete(clear=True)
+        utils.print_complete(clear=True)
     # end if
 
     # done
@@ -371,12 +389,12 @@ def handle_sleep(seconds):
     if not seconds:
         return
     while seconds > 0:
-        info = "sleeping for %s" % format_duration(seconds)
-        print_over("[ %s ]" % colorize(info, Colors.WHITE))
+        info = "sleeping for %s" % utils.format_duration(seconds)
+        utils.print_over("[ %s ]" % utils.colorize(info, Colors.WHITE))
         time.sleep(1)
         seconds = max(seconds - 1, 0)
     # end if
-    print_over("")
+    utils.print_over("")
 # end function
 
 #-------------------------------------------------------------------------------
@@ -385,8 +403,8 @@ def append_result(args, result):
     # format result
     entry = [
         args.command,
-        result.started_on.isoformat(), 
-        format_duration(result.duration),
+        result.completed_on.isoformat(), 
+        str(result.duration),
         str(args.processes),
         str(result.passed_runs), 
         str(result.failed_runs), 
@@ -421,22 +439,25 @@ def print_results(args):
     # end if
 
     # format results as table
-    ROW = "{0:<25} {1:>12} {2:>6} {3:>6} {4:>6}   {5:<8}"
-    print(HLINE)
-    print(colorize(ROW.format("started on", "duration", "proc", "pass", "fail", "result"), Colors.WHITE))
-    print(HLINE)
+    ROW = "{0:<25} {1:>10} {2:>10} {3:>6} {4:>6} {5:>6}   {6:<8}"
+    print(utils.HLINE)
+    print(utils.colorize(ROW.format("completed on", "duration", "per run", "proc", "pass", "fail", "result"), Colors.WHITE))
+    print(utils.HLINE)
     for cmd, entries in groups.items():
-        print(colorize(cmd, Colors.BLUE))
+        print(utils.colorize(cmd, Colors.BLUE))
         for entry in entries:
-            # format datetime
-            entry[0] = format_datetime(datetime.fromisoformat(entry[0]))
-            # format pass/fail
-            entry[3] = format_count(int(entry[3]))
-            entry[4] = format_count(int(entry[4]))
-            # format test result
-            entry[5] = colorize(entry[5], StatusColors[TestStatus[entry[5]]])
+            avg = float(entry[1]) / (int(entry[3]) + int(entry[4]))
+            fmt_entry = (
+                utils.format_datetime(datetime.fromisoformat(entry[0])),        # completed on
+                utils.format_duration(float(entry[1])),                         # duration
+                utils.format_duration(avg),                                     # per run
+                utils.format_count(int(entry[2])),                              # proc
+                utils.format_count(int(entry[3])),                              # pass
+                utils.format_count(int(entry[4])),                              # fail 
+                utils.colorize(entry[5], StatusColors[TestStatus[entry[5]]]),   # result
+            )
             # print it
-            print(ROW.format(*entry))
+            print(ROW.format(*fmt_entry))
         print()
     # end for
 
@@ -479,126 +500,6 @@ def clear_results(args):
 # end function
 
 #-------------------------------------------------------------------------------
-# helpers
-#-------------------------------------------------------------------------------
-#
-#-------------------------------------------------------------------------------
-#
-# custom exception class to terminate script execution
-class Failed(Exception):
-    def __init__(self, message):
-        super().__init__(message)
-# end class
-
-#-------------------------------------------------------------------------------
-#   
-# horizontal line
-HLINE = '-' * 80
-
-#-------------------------------------------------------------------------------
-#
-def colorize(str, color):
-    return color + str + Colors.RESET
-
-#-------------------------------------------------------------------------------
-#       
-def kill(proc):
-    # does not seem to work on windows when using shell=True
-    #proc.terminate()
-    #proc.kill()
-    try:
-        # TODO this works on windows, but seem to kill all child processes
-        os.kill(proc.pid, signal.CTRL_C_EVENT)
-        proc.wait()
-    except KeyboardInterrupt:
-        pass
-    # end try
-# end function  
-
-#-------------------------------------------------------------------------------
-#       
-def remove_files(pattern):
-    for file in glob.glob(pattern):
-        os.remove(file)
-# end function
-
-#-------------------------------------------------------------------------------
-#
-def format_duration(seconds):
-    if seconds < 60:
-        return "%0.3fs" % seconds
-    units = [
-        ("a",   365 * 86400), # years
-        ("mt",  30 * 86400),  # months
-        ("w",   7 * 86400),   # weeks
-        ("d",   86400),       # day
-        ("h",   3600),        # hours
-        ("min", 60),          # minutes
-        ("s",   1)            # seconds
-    ]
-    parts = []
-    for unit, duration in units:
-        num_units, seconds = divmod(seconds, duration)
-        if num_units > 0:
-            parts.append("%d%s" % (num_units, unit))
-    return " ".join(parts[:2])
-# end function
-
-#-------------------------------------------------------------------------------
-#
-def format_datetime(dt):
-    return dt.strftime("%a %d %b %Y, %H:%M:%S")
-# end function    
-
-#-------------------------------------------------------------------------------
-#
-def format_count(count):
-    units = [
-        ("T", 1000000000000), # trillions
-        ("B", 1000000000),    # billions
-        ("M", 1000000),       # million
-        ("K", 1000)           # thousands
-    ]
-    for unit, q in units:
-        if count >= q:
-            return "%d%s" % (count // q, unit)
-    return "%d " % count
-# end function    
-
-#-------------------------------------------------------------------------------
-#
-def error(msg):
-    print("error: %s" % msg, file=sys.stderr)
-# end function
-
-#-------------------------------------------------------------------------------
-#
-print_over_length = 0
-def print_over(msg):
-    global print_over_length
-    msg = '  ' + msg # leave room for cursor
-    if print_over_length > len(msg):
-        padding = ' ' * (print_over_length - len(msg)) 
-    else:
-        padding = ''
-    print(msg + padding, end='\r', flush=True)
-    print_over_length = len(msg)
-
-def print_complete(clear=False):
-    global print_over_length
-    if print_over_length > 0:
-        if clear:
-            print(' ' * print_over_length)
-        else:
-            print()
-    print_over_length = 0
-
-#-------------------------------------------------------------------------------
-#
-def attrs(obj):
-	return [getattr(obj, x) for x in dir(obj) if not x.startswith('__')]
-
-#-------------------------------------------------------------------------------
 # entry point
 #-------------------------------------------------------------------------------
 #
@@ -611,7 +512,7 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except Failed as e:
-        error(e)
+        utils.error(e)
         sys.exit(TestStatus.ERROR)
     # end try
 # end if
