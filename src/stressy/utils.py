@@ -22,6 +22,7 @@ import signal
 import sys
 
 from time import perf_counter as timer
+from importlib.metadata import metadata
 
 #-------------------------------------------------------------------------------
 # classes
@@ -338,14 +339,27 @@ def find_file_in_parents(filename, start_dir=None):
 #-------------------------------------------------------------------------------
 #
 # load program info
-toml = load_toml(find_file_in_parents("pyproject.toml"))
-prog = ProgInfo(
-    name         = toml['project']['name'],
-    version      = toml['project']['version'],
-    description  = toml['project']['description'],
-    website      = toml['project.urls']['Homepage'],
-    bugtracker   = toml['project.urls']['Bug Tracker'],
-)
+prog = None
+try:
+    toml = load_toml(find_file_in_parents("pyproject.toml"))
+    prog = ProgInfo(
+        name         = toml['project']['name'],
+        version      = toml['project']['version'],
+        description  = toml['project']['description'],
+        website      = toml['project.urls']['Homepage'],
+        bugtracker   = toml['project.urls']['Bug Tracker'],
+    )
+except FileNotFoundError:
+    # probably installed
+    m = metadata("stressy")
+    prog = ProgInfo(
+        name         = m['Name'],
+        version      = m['Version'],
+        description  = m['Summary'],
+        website      = m['Project-URL'].split(' ')[-1],
+        bugtracker   = '(unknown)',
+    )
+# end try    
 
 # workaround to enable ansi colors in windows
 # https://stackoverflow.com/questions/12492810/python-how-can-i-make-the-ansi-escape-codes-to-work-also-in-windows

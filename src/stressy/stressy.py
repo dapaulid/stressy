@@ -26,10 +26,13 @@ import time
 
 from datetime import datetime
 
-
-import utils
-from utils import Failed, Colors, prog
-
+try:
+	import utils
+	from utils import Failed, Colors, prog
+except ModuleNotFoundError:
+	from stressy import utils
+	from stressy.utils import Failed, Colors, prog
+# end try
 
 #-------------------------------------------------------------------------------
 # types
@@ -88,11 +91,11 @@ RESULTS_FILE = os.path.join(utils.OsPaths.APPDATA, "stressy.tsv")
 
 # usage examples shown at end of help description
 USAGE_EXAMPLES = """
-  {0} echo hello              # repeat until failure or ctrl-c
-  {0} -n 1k -q echo hello     # repeat 1000 times, output failures only
-  {0} -d 12h -p 4 echo hello  # repeat for 12 hours with 4 processes in parallel
-  {0} -n 3 -c bad_command     # repeat after first failure  
-  {0} -r                      # output previous results and statistics
+  %(prog)s echo hello              # repeat until failure or ctrl-c
+  %(prog)s -n 1k -q echo hello     # repeat 1000 times, output failures only
+  %(prog)s -d 12h -p 4 echo hello  # repeat for 12 hours with 4 processes in parallel
+  %(prog)s -n 3 -c bad_command     # repeat after first failure  
+  %(prog)s -r                      # output previous results and statistics
 """
 
 #-------------------------------------------------------------------------------
@@ -105,7 +108,7 @@ def main():
     # parse command line
     parser = argparse.ArgumentParser(
         description="%s v%s - %s\n  %s" % (prog.name, prog.version, prog.description, utils.colorize(prog.website, Colors.LINK)),
-        epilog="examples:" + utils.format_comments(USAGE_EXAMPLES.format(sys.argv[0])),
+        epilog="examples:" + utils.format_comments(USAGE_EXAMPLES),
         formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('command', type=str, nargs='*', 
         help="the shell command to execute")

@@ -1,0 +1,1 @@
+from .stressy import main
