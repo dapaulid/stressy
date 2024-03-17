@@ -2,18 +2,37 @@
 
 # stressy
 
-A simple tool to repeatedly run a shell command until failure.
+A tool to repeatedly run a shell command until failure.
+
+  - Easy to use: Simply prepend stressy before a command to repeat it until it returns a non-zero exit code.
+  - Allows specifying a minimum number of runs or duration required to pass a stress test.
+  - Supports running a command concurrently using multiple processes.
+  - Keeps track of test results and statistics in a logfile.
 
 ## Installation
 
+For end users:
 ```bash
 pip install stressy
 ```
 
+For developers/contributors:
+```bash
+git clone https://github.com/dapaulid/stressy.git
+pip install -e stressy/
+```
+
+This will checkout the source and install it from the local directory (a.k.a. [Editable Install](https://setuptools.pypa.io/en/latest/userguide/development_mode.html)).
+
+If you run into any trouble during installation, make sure that `pip` is available and up-to-date:
+```bash
+pip install --upgrade pip
+```
+
 ## Usage
 
-```
-usage: stressy.py [-h] [-n RUNS] [-d DURATION] [-p PROCESSES] [-t TIMEOUT] [-s SLEEP] [-c] [-q | -l] [-r] [--clear-results] [command ...]
+```bash
+usage: stressy [-h] [-n RUNS] [-d DURATION] [-p PROCESSES] [-t TIMEOUT] [-s SLEEP] [-c] [-q | -l] [-r] [--clear-results] [command ...]
 
 stressy v1.0.3 - a tool to repeatedly run a command until failure
   https://github.com/dapaulid/stressy
@@ -43,9 +62,9 @@ result history:
   --clear-results       clear result history for the given command
 
 examples:
-  stressy.py echo hello              # repeat until failure or ctrl-c
-  stressy.py -n 1k -q echo hello     # repeat 1000 times, output failures only
-  stressy.py -d 12h -p 4 echo hello  # repeat for 12 hours with 4 processes in parallel
-  stressy.py -n 3 -c bad_command     # repeat after first failure  
-  stressy.py -r                      # output previous results and statistics
+  stressy echo hello              # repeat until failure or ctrl-c
+  stressy -n 1k -q echo hello     # repeat 1000 times, output failures only
+  stressy -d 12h -p 4 echo hello  # repeat for 12 hours with 4 processes in parallel
+  stressy -n 3 -c bad_command     # repeat after first failure  
+  stressy -r                      # output previous results and statistics
 ```
