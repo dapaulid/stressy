@@ -12,15 +12,6 @@
 #-------------------------------------------------------------------------------
 
 #-------------------------------------------------------------------------------
-# program info
-#-------------------------------------------------------------------------------
-#
-__DESCRIPTION__ = "a tool to repeatedly run a command until failure"
-__VERSION__     = "1.0.0"
-__WEBSITE__     = "https://github.com/dapaulid/stressy"
-
-
-#-------------------------------------------------------------------------------
 # imports 
 #-------------------------------------------------------------------------------
 #
@@ -37,7 +28,7 @@ from datetime import datetime
 
 
 import utils
-from utils import Failed, Colors
+from utils import Failed, Colors, prog
 
 
 #-------------------------------------------------------------------------------
@@ -104,7 +95,6 @@ USAGE_EXAMPLES = """
   {0} -r                      # output previous results and statistics
 """
 
-
 #-------------------------------------------------------------------------------
 # main
 #-------------------------------------------------------------------------------
@@ -114,7 +104,7 @@ def main():
     print(utils.colorize("# this is a comment", Colors.ITALIC))
     # parse command line
     parser = argparse.ArgumentParser(
-        description="%(prog)s " + "v%s - %s\n  %s" % (__VERSION__, __DESCRIPTION__, utils.colorize(__WEBSITE__, Colors.LINK)),
+        description="%s v%s - %s\n  %s" % (prog.name, prog.version, prog.description, utils.colorize(prog.website, Colors.LINK)),
         epilog="examples:" + utils.format_comments(USAGE_EXAMPLES.format(sys.argv[0])),
         formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('command', type=str, nargs='*', 

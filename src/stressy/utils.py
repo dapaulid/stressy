@@ -14,6 +14,7 @@
 # imports 
 #-------------------------------------------------------------------------------
 #
+import collections
 import glob
 import os
 import re
@@ -24,6 +25,16 @@ from time import perf_counter as timer
 
 #-------------------------------------------------------------------------------
 # classes
+#-------------------------------------------------------------------------------
+#
+
+#-------------------------------------------------------------------------------
+#
+# the most important metadata of the program
+ProgInfo = collections.namedtuple('ProgInfo', 
+    ['name', 'version', 'description', 'website', 'bugtracker']
+)
+
 #-------------------------------------------------------------------------------
 #
 class Failed(Exception):
@@ -234,16 +245,113 @@ def print_complete(clear=False):
             print()
     print_over_length = 0
 
+#-------------------------------------------------------------------------------
+#
+def load_toml(filename):
+
+    # TODO: the following code is GPT 3.5 generated, and doesn't
+    # parse multi-line stuff correctly. it still seems to be good enough
+    # for our current purposes
+
+    with open(filename, 'r') as file:
+        # Initialize an empty dictionary to store the parsed data
+        data = {}
+        current_section = None
+
+        # Loop through each line in the file
+        for line in file:
+            # Remove leading/trailing whitespace and newline characters
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue  # Skip empty lines and comments
+
+            # Check if the line denotes a section header
+            if line.startswith('[') and line.endswith(']'):
+                current_section = line[1:-1]
+                data[current_section] = {}
+            elif current_section:
+                # Split the line on the first '=' character
+                parts = line.split('=', 1)
+                if len(parts) == 2:  # Ensure there's a key-value pair
+                    key, value = parts
+                    # Remove leading/trailing whitespace from key and value
+                    key = key.strip().strip('"')
+                    value = value.strip()
+                    # Handle lists
+                    if value.startswith('[') and value.endswith(']'):
+                        # Parse the list items
+                        value = [item.strip().strip('"') for item in value[1:-1].split(',')]
+                    # Handle dictionaries
+                    elif value.startswith('{') and value.endswith('}'):
+                        # Parse the dictionary items
+                        # Remove curly braces
+                        value_text = value[1:-1]
+                        # Split by comma and then by equals sign to get key-value pairs
+                        items = value_text.split(',')
+                        value = {}
+                        for item in items:
+                            key_value = item.split('=')
+                            if len(key_value) == 2:
+                                # Strip whitespace and quotes from key and value
+                                key = key_value[0].strip().strip('"')
+                                sub_value = key_value[1].strip().strip('"')
+                                value[key] = sub_value
+                    # Remove surrounding quotes from the value if present
+                    elif value.startswith('"') and value.endswith('"'):
+                        value = value[1:-1]
+                    # Store the key-value pair in the appropriate section
+                    data[current_section][key] = value
+
+        return data
+    # end with
+# end function
+
+#-------------------------------------------------------------------------------
+#
+def find_file_in_parents(filename, start_dir=None):
+    # NOTE: GPT 3.5 generated
+
+    # If start_dir is not provided, use the directory of the calling script
+    if start_dir is None:
+        start_dir = os.path.dirname(os.path.realpath(__file__))
+
+    # Traverse upwards the directory tree until finding the file or reaching the root directory
+    current_dir = start_dir
+    while True:
+        file_path = os.path.join(current_dir, filename)
+        if os.path.isfile(file_path):
+            return file_path
+        
+        # Move up one directory
+        parent_dir = os.path.dirname(current_dir)
+        # Break if current directory is the root directory
+        if parent_dir == current_dir:
+            break
+        current_dir = parent_dir
+    
+    # Just return filename if the file is not found (best effort for error messages)
+    return filename
+# end function
 
 #-------------------------------------------------------------------------------
 # initialization
 #-------------------------------------------------------------------------------
 #
+# load program info
+toml = load_toml(find_file_in_parents("pyproject.toml"))
+prog = ProgInfo(
+    name         = toml['project']['name'],
+    version      = toml['project']['version'],
+    description  = toml['project']['description'],
+    website      = toml['project.urls']['Homepage'],
+    bugtracker   = toml['project.urls']['Bug Tracker'],
+)
+
 # workaround to enable ansi colors in windows
 # https://stackoverflow.com/questions/12492810/python-how-can-i-make-the-ansi-escape-codes-to-work-also-in-windows
 if os.name == 'nt' and use_colors():
 	os.system("")
-# end if  
+# end if
 
 #-------------------------------------------------------------------------------
 # end of file

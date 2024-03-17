@@ -1,2 +1,10 @@
-__pycache__
+# byte-compiled / optimized
+__pycache__/
+*.py[cod]
+
+# distribution / packaging
+dist/
+*.egg-info/
+
+# misc
 *.log
