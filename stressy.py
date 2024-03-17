@@ -104,16 +104,18 @@ USAGE_EXAMPLES = """
   {0} -r                      # output previous results and statistics
 """
 
+
 #-------------------------------------------------------------------------------
 # main
 #-------------------------------------------------------------------------------
 #
 def main():
 
+    print(utils.colorize("# this is a comment", Colors.ITALIC))
     # parse command line
     parser = argparse.ArgumentParser(
         description="%(prog)s " + "v%s - %s\n  %s" % (__VERSION__, __DESCRIPTION__, utils.colorize(__WEBSITE__, Colors.LINK)),
-        epilog="examples:" + USAGE_EXAMPLES.format(sys.argv[0]),
+        epilog="examples:" + utils.format_comments(USAGE_EXAMPLES.format(sys.argv[0])),
         formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('command', type=str, nargs='*', 
         help="the shell command to execute")
@@ -549,11 +551,6 @@ def clear_results(args):
 #-------------------------------------------------------------------------------
 #
 if __name__ == "__main__":
-    # workaround to enable ansi colors in windows
-    # https://stackoverflow.com/questions/12492810/python-how-can-i-make-the-ansi-escape-codes-to-work-also-in-windows
-    if os.name == 'nt':
-        os.system("")
-    # end if    
     try:
         sys.exit(main())
     except Failed as e:

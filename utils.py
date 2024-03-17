@@ -81,8 +81,20 @@ HLINE = '-' * 80
 
 #-------------------------------------------------------------------------------
 #
-def colorize(str, color):
-    return color + str + Colors.RESET
+def use_colors():
+	return sys.stdout.isatty()
+
+#-------------------------------------------------------------------------------
+#
+def colorize(s, color):
+	return color + s + Colors.RESET if use_colors() else s
+# end function
+
+#-------------------------------------------------------------------------------
+#
+def format_comments(s):
+    return s.replace("#", Colors.ITALIC+"#").replace("\n", Colors.RESET+"\n") if use_colors() else s
+# end function
 
 #-------------------------------------------------------------------------------
 #       
@@ -221,6 +233,17 @@ def print_complete(clear=False):
         else:
             print()
     print_over_length = 0
+
+
+#-------------------------------------------------------------------------------
+# initialization
+#-------------------------------------------------------------------------------
+#
+# workaround to enable ansi colors in windows
+# https://stackoverflow.com/questions/12492810/python-how-can-i-make-the-ansi-escape-codes-to-work-also-in-windows
+if os.name == 'nt' and use_colors():
+	os.system("")
+# end if  
 
 #-------------------------------------------------------------------------------
 # end of file
