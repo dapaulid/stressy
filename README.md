@@ -4,7 +4,7 @@
 
 A tool to repeatedly run a shell command until failure.
 
-  - Easy to use: Simply prepend stressy before a command to repeat it until it returns a non-zero exit code.
+  - Easy to use: Just put `stressy` before a command to repeat it until it returns a non-zero exit code.
   - Allows specifying a minimum number of runs or duration required to pass a stress test.
   - Supports running a command concurrently using multiple processes.
   - Keeps track of test results and statistics in a logfile.
