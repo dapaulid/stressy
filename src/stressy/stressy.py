@@ -104,7 +104,6 @@ USAGE_EXAMPLES = """
 #
 def main():
 
-    print(utils.colorize("# this is a comment", Colors.ITALIC))
     # parse command line
     parser = argparse.ArgumentParser(
         description="%s v%s - %s\n  %s" % (prog.name, prog.version, prog.description, utils.colorize(prog.website, Colors.LINK)),
