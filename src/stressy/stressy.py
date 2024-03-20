@@ -109,7 +109,7 @@ def main():
         description="%s v%s - %s\n  %s" % (prog.name, prog.version, prog.description, utils.colorize(prog.website, Colors.LINK)),
         epilog="examples:" + utils.format_comments(USAGE_EXAMPLES),
         formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument('command', type=str, nargs='*', 
+    parser.add_argument('command', nargs=argparse.REMAINDER, 
         help="the shell command to execute")
     # execution options
     exec_group = parser.add_argument_group("execution")
@@ -141,7 +141,13 @@ def main():
     args = parser.parse_args()
 
     # convert command from list to string
-    args.command = subprocess.list2cmdline(args.command)
+    if len(args.command) == 1:
+        # single argument, possibly quoted
+        args.command = args.command[0]
+    else:
+        # multiple arguments
+        args.command = subprocess.list2cmdline(args.command)
+    # end if
 
     # determine output mode from given flags
     if args.logfile:
