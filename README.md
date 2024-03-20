@@ -32,9 +32,9 @@ pip install --upgrade pip
 ## Usage
 
 ```bash
-usage: stressy [-h] [-n RUNS] [-d DURATION] [-p PROCESSES] [-t TIMEOUT] [-s SLEEP] [-c] [-q | -l] [-r] [--clear-results] [command ...]
+usage: stressy [-h] [-n RUNS] [-d DURATION] [-p PROCESSES] [-t TIMEOUT] [-s SLEEP] [-c] [-q | -l] [-r] [--clear-results] ...
 
-stressy v1.0.3 - a tool to repeatedly run a command until failure
+stressy v1.0.4 - a tool to repeatedly run a command until failure
   https://github.com/dapaulid/stressy
 
 positional arguments:
@@ -67,4 +67,5 @@ examples:
   stressy -d 12h -p 4 echo hello  # repeat for 12 hours with 4 processes in parallel
   stressy -n 3 -c bad_command     # repeat after first failure  
   stressy -r                      # output previous results and statistics
+
 ```
